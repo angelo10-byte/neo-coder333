@@ -7,10 +7,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Plus, Search, Paperclip, ArrowUp, PanelLeft, Share, Sparkles, 
   Lightbulb, Code, FileCode2, TerminalSquare, RefreshCcw,
-  ChevronDown, ChevronRight
+  ChevronDown, ChevronRight, LogIn, LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
+
+import { initializeApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import firebaseConfig from '../firebase-applet-config.json';
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -70,6 +77,30 @@ const ThoughtBlock = ({ thoughts, isThinkingPhase }: { thoughts: string, isThink
 };
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  const handleSignIn = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Sign in error:", error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Sign out error:", error);
+    }
+  };
+
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
       const saved = localStorage.getItem('neo-coder-chats');
@@ -419,9 +450,29 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="text-[15px] font-medium text-gray-200">{activeSession?.title || 'New conversation'}</span>
           </div>
-          <button className="p-2 hover:bg-[#1a1d24] rounded-lg text-gray-400 transition-colors">
-            <Share size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            {user ? (
+              <button 
+                onClick={handleSignOut}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#1a1d24] text-gray-300 hover:text-white rounded-lg transition-colors border border-[#2d323e]"
+              >
+                <img src={user.photoURL || undefined} alt="Avatar" className="w-4 h-4 rounded-full" />
+                <span className="truncate max-w-[80px]">{user.displayName || 'User'}</span>
+                <LogOut size={14} className="ml-1" />
+              </button>
+            ) : (
+              <button 
+                onClick={handleSignIn}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 rounded-lg transition-colors border border-blue-500/30"
+              >
+                <LogIn size={14} />
+                <span>Sign in with Google</span>
+              </button>
+            )}
+            <button className="p-2 hover:bg-[#1a1d24] rounded-lg text-gray-400 transition-colors">
+              <Share size={18} />
+            </button>
+          </div>
         </header>
 
         {/* Chat Area */}

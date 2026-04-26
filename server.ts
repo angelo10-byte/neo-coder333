@@ -11,15 +11,17 @@ async function startServer() {
   app.use(express.json());
 
   // Use the OpenRouter API key provided by the user.
-  // We keep this server-side so it's not exposed to the frontend.
-  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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";
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    console.warn("Warning: OPENROUTER_API_KEY environment variable is not set.");
+  }
 
   const openai = new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
-    apiKey: OPENROUTER_API_KEY,
+    apiKey: apiKey || "missing_api_key",
     defaultHeaders: {
-      "HTTP-Referer": process.env.APP_URL || "http://localhost:3000", // Required by OpenRouter
-      "X-Title": "Neo Coder AI", // Required by OpenRouter
+      "HTTP-Referer": process.env.APP_URL || "http://localhost:3000",
+      "X-Title": "Neo Coder AI",
     }
   });
 
@@ -117,3 +119,4 @@ ${lastUserMessage}`;
 }
 
 startServer();
+
