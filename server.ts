@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -11,7 +12,7 @@ async function startServer() {
 
   // Use the OpenRouter API key provided by the user.
   // We keep this server-side so it's not exposed to the frontend.
-  const OPENROUTER_API_KEY = "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";
+  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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";
 
   const openai = new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
