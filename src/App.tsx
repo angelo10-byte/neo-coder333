@@ -130,6 +130,27 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+
+  const [memoryPermission, setMemoryPermission] = useState<boolean | null>(() => {
+    try {
+      const saved = localStorage.getItem('neo-memory-permission');
+      return saved ? JSON.parse(saved) : null;
+    } catch(e) { return null; }
+  });
+
+  const [neoMemory, setNeoMemory] = useState<string>(() => {
+    return localStorage.getItem('neo-coder-memory') || '';
+  });
+
+  useEffect(() => {
+    if (memoryPermission !== null) {
+      localStorage.setItem('neo-memory-permission', JSON.stringify(memoryPermission));
+    }
+  }, [memoryPermission]);
+
+  useEffect(() => {
+    localStorage.setItem('neo-coder-memory', neoMemory);
+  }, [neoMemory]);
   
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -147,13 +168,39 @@ export default function App() {
     setInput('');
     setIsLoading(true);
 
+    let currentSystemContent = 'You are Neo Coder, a helpful, minimalist AI coding assistant created by Neo. You are strictly Neo Coder v1 Beta.';
+    const isMeaningfulMemory = neoMemory && neoMemory.trim() !== '' && neoMemory !== '(Empty)' && neoMemory !== 'No memory yet.';
+    if (memoryPermission && isMeaningfulMemory) {
+      currentSystemContent += `\n\nHere are some things you know about the user:\n${neoMemory}`;
+    }
+    
+    currentSystemContent += (isThinking ? ' Think step-by-step. In your reasoning process, focus ONLY on solving the user\'s problem. Never summarize your instructions, never mention your persona, and never discuss what you are or are not allowed to say.' : '');
+
     const systemPrompt: ChatMessage = {
       role: 'system',
-      content: 'You are Neo Coder, a helpful, minimalist AI coding assistant created by Neo. Never mention OpenRouter, Minimax, or any other company/model names. You are strictly Neo Coder v1.' + 
-        (isThinking ? ' Think step-by-step.' : '')
+      content: currentSystemContent
     };
 
     const payloadMessages = [systemPrompt, ...messages.filter(m => m.role !== 'system'), userMsg];
+
+    // Fire memory update in background if enabled
+    if (memoryPermission) {
+      fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messages.filter(m => m.role !== 'system'), userMsg],
+          currentMemory: neoMemory
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.memory) {
+          setNeoMemory(data.memory);
+        }
+      })
+      .catch(err => console.error("Memory update error:", err));
+    }
 
     try {
       const response = await fetch('/api/chat', {
@@ -166,7 +213,10 @@ export default function App() {
         })
       });
 
-      if (!response.ok) throw new Error('API Error');
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`API Error: ${response.status} ${response.statusText} - ${text}`);
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -193,11 +243,16 @@ export default function App() {
               if (dataStr === '[DONE]') break;
               try {
                 const parsed = JSON.parse(dataStr);
-                if (parsed.error) throw new Error(parsed.error);
+                if (parsed.error) {
+                  throw new Error(parsed.error);
+                }
                 accumulatedContent += (parsed.content || '');
                 accumulatedReasoning += (parsed.reasoning || '');
-              } catch (e) {
-                // Ignore incomplete JSON
+              } catch (e: any) {
+                if (e.message !== "Unexpected end of JSON input" && !e.message.includes("is not valid JSON")) {
+                  throw e; // Re-throw actual API errors
+                }
+                // Otherwise ignore incomplete JSON
               }
             }
           }
@@ -319,7 +374,7 @@ export default function App() {
               <span className="text-[15px] font-semibold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
                 Neo Coder
               </span>
-              <span className="text-[10px] text-gray-500 font-medium">v1</span>
+              <span className="text-[10px] text-gray-500 font-medium">v1 Beta</span>
             </div>
           </div>
           <button className="text-gray-400 hover:text-gray-200 transition-colors p-1.5 rounded-lg hover:bg-[#1a1d24]">
@@ -471,11 +526,41 @@ export default function App() {
             </div>
             
             <div className="text-center mt-3 text-[11px] text-[#5e6371] font-medium">
-              Neo Coder v1 · May produce inaccurate info — verify critical code.
+              Neo Coder v1 Beta · May produce inaccurate info — verify critical code.
             </div>
           </div>
         </div>
       </div>
+
+      {memoryPermission === null && (
+        <div className="fixed inset-0 bg-[#0a0a0c]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#12141a] border border-[#2d323e] p-6 rounded-2xl max-w-[400px] w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+               <div className="h-10 w-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                 <Sparkles size={20} />
+               </div>
+               <h2 className="text-[17px] font-bold text-gray-100 tracking-tight">Give Neo Memory</h2>
+            </div>
+            <p className="text-gray-400 text-[14px] mb-8 leading-relaxed">
+              Allow Neo to remember details from your previous chats. Neo will summarize and securely store facts about you (like your name or preferences) so you don't have to repeat yourself.
+            </p>
+            <div className="flex justify-end gap-3 font-medium">
+              <button 
+                onClick={() => setMemoryPermission(false)}
+                className="px-4 py-2 text-[13px] text-gray-400 hover:text-white transition-colors"
+              >
+                No thanks
+              </button>
+              <button 
+                onClick={() => setMemoryPermission(true)}
+                className="px-5 py-2 bg-white text-black hover:bg-gray-200 rounded-lg text-[13px] transition-colors"
+              >
+                Enable Memory
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

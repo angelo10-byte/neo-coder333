@@ -12,7 +12,7 @@ async function startServer() {
 
   // Use the OpenRouter API key provided by the user.
   // We keep this server-side so it's not exposed to the frontend.
-  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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";
+  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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";
 
   const openai = new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
@@ -47,7 +47,7 @@ async function startServer() {
 
       for await (const chunk of stream) {
         const content = chunk.choices[0]?.delta?.content || "";
-        const reasoning = (chunk.choices[0]?.delta as any)?.reasoning_content || "";
+        const reasoning = (chunk.choices[0]?.delta as any)?.reasoning || "";
         
         if (content || reasoning) {
           res.write(`data: ${JSON.stringify({ content, reasoning })}\n\n`);
@@ -59,6 +59,40 @@ async function startServer() {
       console.error("OpenRouter API Error:", error.response?.data || error.message);
       res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
       res.end();
+    }
+  });
+
+  // API Route for memory update
+  app.post("/api/memory", async (req, res) => {
+    let memoryFallback = "";
+    try {
+      const { messages, currentMemory } = req.body;
+      memoryFallback = currentMemory || "";
+      if (!messages || messages.length === 0) return res.json({ memory: currentMemory });
+      
+      const lastUserMessage = messages[messages.length - 1].content;
+      
+      const prompt = `You are a strict data extractor. Analyze the user's latest statement and extract any personal facts, preferences, name, age, or other traits they explicitly stated. 
+If there's nothing new, return the exact CURRENT MEMORY string.
+If there is new information, append it to the CURRENT MEMORY in a concise bulleted list format.
+DO NOT include pleasantries, greetings, or explanations. ONLY output the raw memory text. Never output the words "CURRENT MEMORY:" in your response.
+
+CURRENT MEMORY:
+${currentMemory || "No memory yet."}
+
+LATEST USER STATEMENT:
+${lastUserMessage}`;
+
+      const response = await openai.chat.completions.create({
+        model: "minimax/minimax-m2.5:free", // fast standard free model
+        messages: [{ role: "system", content: prompt }]
+      });
+
+      const updatedMemory = response.choices[0]?.message?.content?.trim() || currentMemory;
+      res.json({ memory: updatedMemory });
+    } catch (error: any) {
+      console.error("Memory API Error:", error.message);
+      res.json({ memory: memoryFallback }); // keep current if fails
     }
   });
 
